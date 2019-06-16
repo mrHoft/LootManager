@@ -514,7 +514,7 @@ local function MoveItems()
     for slotIndex, data in pairs(BagCache[sourceBag]) do
       local param = nil
       local itemLink = GetItemLink(sourceBag, slotIndex)
-      if not data.isJunk and not IsItemLinkStolen(itemLink) and not IsItemLinkCrafted(itemLink) then
+      if not data.isJunk and not IsItemLinkStolen(itemLink) and not IsItemLinkCrafted(itemLink) and GetItemLinkBindType(itemLink) ~= BIND_TYPE_ON_PICKUP_BACKPACK then
         local itemId = GetItemId(sourceBag, slotIndex)
         if itemId then
           local itemType, specializedItemType = GetItemLinkItemType(itemLink)
