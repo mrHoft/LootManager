@@ -146,6 +146,7 @@ local Default = { -- Base settings
   Glyph = {1, nil, false, false, false, false},
   Fragments = {nil, nil, nil, nil, false, false},
   Potions = {nil, nil, false, false, false, false},
+  Poisons = {nil, nil, false, false, false, false},
   Food = {1, nil, false, false, false, false},
   Furnishing = {1, nil, nil, false, false, false},
   -- Materials
@@ -164,12 +165,13 @@ local Default = { -- Base settings
   Rune = {nil, nil, false, false, false, false},
   Aspect = {1, nil, false, false, false, false},
   -- Recieps
-  StyleKnown = {3, nil, false, nil, false, false},
-  StyleUnknown = {nil, nil, nil, nil, false, false},
-  RecipeKnown = {2, nil, false, false, false, false},
-  RecipeUnknown = {nil, nil, nil, nil, false, false},
-  TreasureMap = {nil, nil, nil, nil, false, false},
-  MasterWrit = {nil, nil, nil, nil, false, false},
+  StyleKnown = {3, 0, false, false, false, false},
+  StyleUnknown = {3, 0, false, false, false, false},
+  RecipeKnown = {2, 0, false, false, false, false},
+  RecipeUnknown = {2, 0, false, false, false, false},
+  TreasureMap = {nil, nil, false, false, false, false},
+  SurveyMap = {nil, nil, false, nil, false, false},
+  MasterWrit = {nil, nil, false, nil, false, false},
 }
 local Localisation = {
   en = {
@@ -235,9 +237,14 @@ local Localisation = {
       tooltip = "Trophy key/runebox fragments.",
     },
     Potions = {
-      entry = "Potions/poisons",
+      entry = "Potions",
       [3] = " (except 150 potions)",
       [4] = " (except 150 potions)",
+    },
+    Poisons = {
+      entry = "Poisons",
+      [3] = " (except 150 poisons)",
+      [4] = " (except 150 poisons)",
     },
     Food = {entry = "Food/drink"},
     Furnishing = {entry = "Furnishing"},
@@ -271,7 +278,8 @@ local Localisation = {
     StyleUnknown = {entry = "Crafting style unknown"},
     RecipeKnown = {entry = "Recipe known"},
     RecipeUnknown = {entry = "Recipe unknown"},
-    TreasureMap = {entry = "Treasure/survey maps"},
+    TreasureMap = {entry = "Treasure maps"},
+    SurveyMap = {entry = "Survey maps"},
     MasterWrit = {entry = "Master writs"},
     -- Headers
     HeaderCurency = {entry = "Currency"},
@@ -297,14 +305,15 @@ local MenuSettings = {
   {param = "Voucher", count = true, icon = "/esoui/art/currency/writvoucher_mipmap.dds"},
   {param = "HeaderConsumables", header = true},
   {param = "Consumables", count = true, filters = "ConsumableFilters"},
+  {param = "Food",  switch = true, icon = "/esoui/art/tutorial/inventory_tabicon_food_up.dds"},
+  {param = "Poisons", switch = true, icon = "/esoui/art/treeicons/store_indexicon_consumables_up.dds"},
+  {param = "Potions", switch = true, icon = "/esoui/art/treeicons/store_indexicon_consumables_up.dds"},
   {param = "HeaderItems", header = true},
   {param = "Items", filters = "TrashFilters"},
   {param = "Stolen", icon = "/esoui/art/inventory/gamepad/gp_inventory_icon_stolenitem.dds"},
   {param = "Jewelry", icon = "/esoui/art/icons/gear_altmer_neck_a.dds"},
   {param = "Glyph", switch = true, icon = "/esoui/art/icons/crafting_enchantment_032.dds"},
   {param = "Fragments", switch = true, icon = "/esoui/art/icons/quest_daedricembers.dds"},
-  {param = "Potions", switch = true, icon = "/esoui/art/treeicons/store_indexicon_consumables_up.dds"},
-  {param = "Food",  switch = true, icon = "/esoui/art/tutorial/inventory_tabicon_food_up.dds"},
   {param = "Furnishing", switch = true, icon = "/esoui/art/treeicons/collection_indexicon_furnishings_up.dds"},
   {param = "HeaderMaterials", header = true},
   {param = "LowMaterial", icon = "/esoui/art/icons/crafting_ore_base_iron_r2.dds"},
@@ -327,6 +336,7 @@ local MenuSettings = {
   {param = "RecipeKnown", switch = true, icon = "/esoui/art/icons/quest_scroll_001.dds"},
   {param = "RecipeUnknown", switch = true, icon = "/esoui/art/icons/quest_scroll_001.dds"},
   {param = "TreasureMap", switch = true, icon = "/esoui/art/icons/quest_scroll_001.dds"},
+  {param = "SurveyMap", switch = true, icon = "/esoui/art/icons/quest_scroll_001.dds"},
   {param = "MasterWrit", switch = true, icon = "/esoui/art/icons/master_writ_blacksmithing.dds"},
 }
 local ItemFilters = {
@@ -579,7 +589,8 @@ local function MoveItems()
             if equipType == EQUIP_TYPE_NECK or equipType == EQUIP_TYPE_RING then param = "Jewelry" end
           elseif itemType == ITEMTYPE_GLYPH_ARMOR or itemType == ITEMTYPE_GLYPH_JEWELRY or itemType == ITEMTYPE_GLYPH_WEAPON then param = "Glyph"
           elseif Fragments[specializedItemType] then param = "Fragments"
-          elseif itemType == ITEMTYPE_POTION or itemType == ITEMTYPE_POISON and not IsItemBound(sourceBag, slotIndex) then param = "Potions"
+          elseif itemType == ITEMTYPE_POISON and not IsItemBound(sourceBag, slotIndex) then param = "Poisons"
+          elseif itemType == ITEMTYPE_POTION and not IsItemBound(sourceBag, slotIndex) then param = "Potions"
           elseif itemType == ITEMTYPE_FOOD or itemType == ITEMTYPE_DRINK then param = "Food"
           elseif itemType == ITEMTYPE_FURNISHING then param = "Furnishing"
           -- elseif itemType == ITEMTYPE_LURE then param = "FishingLure"
@@ -604,7 +615,8 @@ local function MoveItems()
           elseif itemType == ITEMTYPE_RACIAL_STYLE_MOTIF then param = IsItemLinkBookKnown(itemLink) and "StyleKnown" or "StyleUnknown"
           elseif itemType == ITEMTYPE_RECIPE and isRecipe[specializedItemType] then param = IsItemLinkRecipeKnown(itemLink) and "RecipeKnown" or "RecipeUnknown"
           elseif specializedItemType == SPECIALIZED_ITEMTYPE_TROPHY_RECIPE_FRAGMENT then param = "RecipeKnown"
-          elseif specializedItemType == SPECIALIZED_ITEMTYPE_TROPHY_SURVEY_REPORT or specializedItemType == SPECIALIZED_ITEMTYPE_TROPHY_TREASURE_MAP then param = "TreasureMap"
+          elseif specializedItemType == SPECIALIZED_ITEMTYPE_TROPHY_SURVEY_REPORT then param = "SurveyMap"
+          elseif specializedItemType == SPECIALIZED_ITEMTYPE_TROPHY_TREASURE_MAP then param = "TreasureMap"
           elseif itemType == ITEMTYPE_MASTER_WRIT then param = "MasterWrit"
           end
           if param then
@@ -887,7 +899,8 @@ local function OnSlotUpdate(_, bagId, slotId, isNewItem)
   elseif IsItemLinkStolen(itemLink) and (itemType == ITEMTYPE_TREASURE or itemType == ITEMTYPE_ARMOR or itemType == ITEMTYPE_WEAPON) then param = "Stolen"
   elseif itemType == ITEMTYPE_STYLE_MATERIAL and IsCommonStyle[itemStyle] then param = "StyleMaterial"
   elseif itemType == ITEMTYPE_ARMOR_TRAIT or itemType == ITEMTYPE_WEAPON_TRAIT then param = "TraitMaterial"
-  elseif ((itemType == ITEMTYPE_POTION and (GetItemLinkRequiredChampionPoints(itemLink) or 0) < 150) or itemType == ITEMTYPE_POISON) and not IsItemBound(bagId, slotId) then param = "Potions"
+  elseif (itemType == ITEMTYPE_POISON and (GetItemLinkRequiredChampionPoints(itemLink) or 0) < 150) and not IsItemBound(bagId, slotId) then param = "Poisons"
+  elseif (itemType == ITEMTYPE_POTION and (GetItemLinkRequiredChampionPoints(itemLink) or 0) < 150) and not IsItemBound(bagId, slotId) then param = "Potions"
   elseif itemType == ITEMTYPE_POISON_BASE then ignoreId = itemId SetItemIsJunk(bagId, slotId, true) return
   elseif itemType == ITEMTYPE_ARMOR or itemType == ITEMTYPE_WEAPON then
     local isSet = GetItemLinkSetInfo(itemLink, false)
