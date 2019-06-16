@@ -438,18 +438,22 @@ local function MoveItems()
   local BagCache = {
     [BAG_BACKPACK] = SHARED_INVENTORY.bagCache[BAG_BACKPACK],
     [BAG_BANK] = SHARED_INVENTORY.bagCache[BAG_BANK],
+    [BAG_SUBSCRIBER_BANK] = SHARED_INVENTORY.bagCache[BAG_SUBSCRIBER_BANK],
   }
   local tempBagCache = {
     [BAG_BACKPACK] = {},
     [BAG_BANK] = {},
+    [BAG_SUBSCRIBER_BANK] = {},
   }
   local FirstSlot = {
     [BAG_BACKPACK] = 0,
     [BAG_BANK] = 0,
+    [BAG_SUBSCRIBER_BANK] = 0,
   }
   local BagSize = {
     [BAG_BACKPACK] = GetBagSize(BAG_BACKPACK),
     [BAG_BANK] = GetBagSize(BAG_BANK),
+    [BAG_SUBSCRIBER_BANK] = GetBagSize(BAG_SUBSCRIBER_BANK),
   }
   -- Find slot to stack
   local function FindSlotToStack(bagId, itemId, count)
@@ -459,6 +463,7 @@ local function MoveItems()
         if stackMax - stackCount >= count then return slotIndex end
       end
     end
+    return nil
   end
   -- Find empty slot
   local function FindEmptySlotInBag(bagId)
@@ -469,6 +474,24 @@ local function MoveItems()
         return slotIndex
       end
     end
+    return nil
+  end
+  -- Wrapper function for FindSlotToStack and FindEmptySlotInBag, returns destBankId, destSlot
+  local function FindAHomeForItem(bagId, itemId, count)
+    local destBag = bagId
+    local destSlot = FindSlotToStack(bagId, itemId, count)
+    if destSlot ~= nil then return destBag, destSlot end
+    if destBag == BAG_BANK and IsESOPlusSubscriber() then
+      destSlot = FindSlotToStack(BAG_SUBSCRIBER_BANK, itemId, count)
+      if destSlot ~= nil then return BAG_SUBSCRIBER_BANK, destSlot end
+    end
+    destSlot = FindEmptySlotInBag(destBag)
+    if destSlot ~= nil then return destBag, destSlot end
+    if destBag == BAG_BANK and IsESOPlusSubscriber() then
+      destSlot = FindEmptySlotInBag(BAG_SUBSCRIBER_BANK)
+      if destSlot ~= nil then return BAG_SUBSCRIBER_BANK, destSlot end
+    end
+    return nil, nil
   end
   -- Consumables
   local ConsumableItems = {}
@@ -477,10 +500,12 @@ local function MoveItems()
       Info = {
         [BAG_BACKPACK] = {},
         [BAG_BANK] = {},
+        [BAG_SUBSCRIBER_BANK] = {},
       },
       Count = {
-        [BAG_BACKPACK]=0,
-        [BAG_BANK]=0,
+        [BAG_BACKPACK] = 0,
+        [BAG_BANK] = 0,
+        [BAG_SUBSCRIBER_BANK] = 0,
       },
       Hold = SavedVars[id] and SavedVars.Consumables[2] or 0,
       Deposit = SavedVars.Consumables[5],
@@ -495,11 +520,13 @@ local function MoveItems()
         ConsumableItems[id] = {
           Info = {
             [BAG_BACKPACK] = {},
-            [BAG_BANK]= {},
+            [BAG_BANK] = {},
+            [BAG_SUBSCRIBER_BANK] = {},
           },
           Count = {
-            [BAG_BACKPACK]=0,
-            [BAG_BANK]=0,
+            [BAG_BACKPACK] = 0,
+            [BAG_BANK] = 0,
+            [BAG_SUBSCRIBER_BANK] = 0,
           },
           Hold = count,
           Withdraw = true,
@@ -511,7 +538,15 @@ local function MoveItems()
   for Action = 5, 6 do -- Deposit, Withdraw
     local sourceBag = Action == 5 and BAG_BACKPACK or BAG_BANK
     local destBag = Action == 5 and BAG_BANK or BAG_BACKPACK
-    for slotIndex, data in pairs(BagCache[sourceBag]) do
+
+    -- Override the bag if we are looking at the BAG_BANK
+    local bankBagOverride = BagCache[sourceBag]
+    if sourceBag == BAG_BANK then bankBagOverride = SHARED_INVENTORY:GenerateFullSlotData(nil, BAG_BANK, BAG_SUBSCRIBER_BANK) end
+
+    for slotIndex, data in pairs(bankBagOverride) do
+      sourceBag = data.bagId
+      slotIndex = data.slotIndex
+
       local param = nil
       local itemLink = GetItemLink(sourceBag, slotIndex)
       if not data.isJunk and not IsItemLinkStolen(itemLink) and not IsItemLinkCrafted(itemLink) and GetItemLinkBindType(itemLink) ~= BIND_TYPE_ON_PICKUP_BACKPACK then
@@ -595,7 +630,7 @@ local function MoveItems()
     -- Deposit
     if Item.Deposit and Item.Count[BAG_BACKPACK] - Item.Hold > 0 then
       for _, data in pairs(Item.Info[BAG_BACKPACK]) do
-        local count = math.min(Item.Count[BAG_BACKPACK] - Item.Hold, data.stackCount)
+        local count=math.min(Item.Count[BAG_BACKPACK] - Item.Hold, data.stackCount)
         if count > 0 then
           Item.Count[BAG_BACKPACK] = Item.Count[BAG_BACKPACK] - count
           table.insert(QueueData, {
@@ -633,10 +668,12 @@ local function MoveItems()
   local countMoved = {
     [BAG_BACKPACK] = 0,
     [BAG_BANK] = 0,
+    [BAG_SUBSCRIBER_BANK] = 0,
   }
   local itemsMoved = {
     [BAG_BACKPACK] = 0,
     [BAG_BANK] = 0,
+    [BAG_SUBSCRIBER_BANK] = 0,
   }
   local itemsMovedTotal = 0
   local function MoveItem(sourceBag, sourceSlot, destBag, destSlot, stackCount)
@@ -650,9 +687,13 @@ local function MoveItems()
   for _, data in pairs(QueueData) do
     if itemsMovedTotal < 80 then
       local FreeSlots = GetNumBagFreeSlots(data[3])
-      if FreeSlots > 0 then
+      if FreeSlots == 0 and data[3] == BAG_BANK then 
+        FreeSlots = GetNumBagFreeSlots(BAG_SUBSCRIBER_BANK)
+      end
+      if FreeSlots>0 then
+
         local Action, sourceBag, destBag, sourceSlot, stackCount, itemLink, itemId = unpack(data)
-        local destSlot = itemId and FindSlotToStack(destBag, itemId, stackCount) destSlot = destSlot or FindEmptySlotInBag(destBag) -- FindFirstEmptySlotInBag(destBag)
+        local destBag, destSlot = FindAHomeForItem(destBag, itemId, stackCount)
         if destSlot then
           -- Move item
           MoveItem(sourceBag, sourceSlot, destBag, destSlot, stackCount)
@@ -663,14 +704,28 @@ local function MoveItems()
             d(zo_strformat(Localisation[lang][Action == 5 and "DepositedItem" or "WithdrawnItem"], itemIcon, stackCount, itemLink))
           end
         end
+      else
+        if data[3] == BAG_BACKPACK then
+          ZO_Alert(UI_ALERT_CATEGORY_ALERT, SOUNDS.NEGATIVE_CLICK, SI_INVENTORY_ERROR_INVENTORY_FULL)
+        else
+          ZO_Alert(UI_ALERT_CATEGORY_ALERT, SOUNDS.NEGATIVE_CLICK, SI_INVENTORY_ERROR_BANK_FULL)
+        end
       end
     end
   end
   -- Summary
-  for _, bag in pairs({BAG_BACKPACK, BAG_BANK}) do
-    if itemsMoved[bag] > 0 then
+  for _,bag in pairs({BAG_BACKPACK, BAG_BANK}) do
+    local totalItemsMoved = itemsMoved[bag]
+    local totalCountMoved = countMoved[bag]
+
+    if bag == BAG_BANK then
+      totalItemsMoved = itemsMoved[bag] + itemsMoved[BAG_SUBSCRIBER_BANK]
+      totalCountMoved = countMoved[bag] + countMoved[BAG_SUBSCRIBER_BANK]
+    end
+
+    if totalItemsMoved > 0 then
       -- StackBag(bag)
-      local text = zo_strformat(Localisation[lang][bag == BAG_BANK and "DepositedTotal" or "WithdrawnTotal"], itemsMoved[bag], countMoved[bag])
+      local text=zo_strformat(Localisation[lang][bag == BAG_BANK and "DepositedTotal" or "WithdrawnTotal"], totalItemsMoved, totalCountMoved)
       ZO_Alert(UI_ALERT_CATEGORY_ALERT, nil, text)
       if SavedVars.ChatOutput then d(text) end
     end
